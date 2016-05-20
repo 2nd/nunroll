@@ -15,8 +15,23 @@ list.add(user1)
 list.add(user2)
 list.add(user3)
 
-for user in list:
-  echo user
+# get users
+for user in list: ...
+
+# get users with an increment counter ('cuz)
+for i, user in list: ...
+
+# get users with sorted value (age, in this case)
+for age, user in list.ranked: ...
+
+# get users in reverse order
+for user in list.ritems: ...
+
+# get users with an increment counter ('cuz) in reverse order
+for i, user in list.rpairs: ...
+
+# get users with sorted value (age, in this case) in reverse order
+for age, user in list.rranked: ...
 ```
 
 ## Todo

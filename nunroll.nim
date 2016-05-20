@@ -160,20 +160,32 @@ proc add*[S, V](list: var List[S, V], value: V) =
 
 proc len*[S, V](list: List[S, V]): int {.inline.} = list.count
 
-iterator pairs*[S, V](list: List[S, V]): tuple[key: int, val: V] =
+iterator pairs*[S, V](list: List[S, V]): tuple[key: int, val: V] {.inline.} =
   var counter = 0
-  for value in list:
-    yield(counter, value)
+  for value in list.ranked:
+    yield(counter, value.value)
     counter += 1
 
-iterator items*[S, V](list: List[S, V]): V =
-  var segment = list.head
-  while not segment.isNil:
-    for value in segment.values: yield value.value
-    segment = segment.next
+iterator items*[S, V](list: List[S, V]): V {.inline.} =
+  for value in list.ranked: yield(value.value)
 
 iterator ranked*[S, V](list: List[S, V]): Value[S, V] =
   var segment = list.head
   while not segment.isNil:
     for value in segment.values: yield value
     segment = segment.next
+
+iterator rpairs*[S, V](list: List[S, V]): tuple[key: int, val: V] {.inline.} =
+  var counter = 0
+  for value in list.rranked:
+    yield(counter, value.value)
+    counter += 1
+
+iterator ritems*[S, V](list: List[S, V]): V {.inline.} =
+  for value in list.rranked: yield(value.value)
+
+iterator rranked*[S, V](list: List[S, V]): Value[S, V] =
+  var segment = list.tail
+  while not segment.isNil:
+    for i in countdown(<segment.len, 0): yield segment.values[i]
+    segment = segment.prev

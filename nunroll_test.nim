@@ -24,10 +24,20 @@ suite "nunroll":
     for index, actual in list:
       check(actual == flattened[index])
 
+    # check the reverse pairs iterator
+    for index, actual in list.rpairs:
+      check(actual == flattened[flattened.len - index - 1])
+
     # check the items iterator
     var index = 0
     for actual in list:
       check(actual == flattened[index])
+      index += 1
+
+    # check the reverse items iterator
+    index = 0
+    for actual in list.ritems:
+      check(actual == flattened[flattened.len - index - 1])
       index += 1
 
     # check the ranked iterator
@@ -35,6 +45,13 @@ suite "nunroll":
     for score, actual in list.ranked:
       check(actual == flattened[index])
       check(score == flattened[index])
+      index += 1
+
+    # check the reverse ranked iterator
+    index = 0
+    for score, actual in list.rranked:
+      check(actual == flattened[flattened.len - index - 1])
+      check(score == flattened[flattened.len - index - 1])
       index += 1
 
     # check the head and the tail
