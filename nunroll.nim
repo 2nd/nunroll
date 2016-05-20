@@ -8,7 +8,7 @@ type
     value: V,
   ]
 
-  Getter*[I, S, V] = proc(v: V): Item[I, S, V]
+  Getter*[I, S, V] = proc(v: V): Item[I, S, V] {.noSideEffect.}
 
   Segment*[I, S, V] = ref object
     prev*: Segment[I, S, V]
@@ -91,7 +91,7 @@ proc findSegment[I, S, V](list: List[I, S, V], sort: S): tuple[segment: Segment[
 #
 # Reuse the segment to keep the "bottom" part of the list.
 
-proc split[I, S, V](list: var List[I, S, V], segment: Segment[I, S, V], item: Item[I, S, V]) =
+proc split[I, S, V](list: List[I, S, V], segment: Segment[I, S, V], item: Item[I, S, V]) =
   let top = newSegment[I, S, V](list.density)
   let cutoff = int(segment.len / 2)
 
@@ -122,7 +122,7 @@ proc newNunroll*[I, S, V](getter: Getter[I, S, V], density: int = 64): List[I, S
     density: density
   )
 
-proc add*[I, S, V](list: var List[I, S, V], value: V) =
+proc add*[I, S, V](list: List[I, S, V], value: V) =
   let item = list.getter(value)
 
   let found = list.findSegment(item.sort)

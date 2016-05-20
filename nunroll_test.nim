@@ -6,7 +6,7 @@ suite "nunroll":
   echo "random seed ", seed
   math.randomize(seed)
 
-  let getter = proc(i: int): nunroll.Item[int, int, int] = (i * 2, i * 4, i)
+  let getter = proc(i: int): nunroll.Item[int, int, int] {.noSideEffect.} = (i * 2, i * 4, i)
 
   # checks both the exposed iterator values (items and pair)
   # as well as the internal segment structure to make sure
@@ -51,7 +51,7 @@ suite "nunroll":
     checkIter(list, @[])
 
   test "add":
-    var list = newNunroll(getter, 4)
+    let list = newNunroll(getter, 4)
     list.add(2)
     checkIter(list, @[2])
     list.add(1)
@@ -60,13 +60,13 @@ suite "nunroll":
     checkIter(list, @[1, 2, 3, 6], @[8])
 
   test "add reverse":
-    var list = newNunroll(getter, 4)
+    let list = newNunroll(getter, 4)
     for i in countdown(9, 0): list.add(i)
     checkIter(list, @[0, 1], @[2, 3, 4, 5], @[6, 7, 8, 9])
 
   test "randomness":
     for i in 0..<1_000:
-      var list = newNunroll(getter, math.random(4) + 4)
+      let list = newNunroll(getter, math.random(4) + 4)
       for i in 0..<math.random(1_000):
         list.add(math.random(100_000))
 
