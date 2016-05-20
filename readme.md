@@ -6,32 +6,22 @@ An unrolled list lists is an ideal data structure for read-heavy indexing. The u
 
 ## Usage
 ```nim
-let sort = proc(u: User): int = u.age
 
 # create a Nunroll of type [int, User]
 # where the int is the sort type
-var list = newNunroll(sort)
+let getter = proc(u: User): nunroll.Item[int, int, User] = (user.id, user.age, user)
+var list = newNunroll(getter)
 list.add(user1)
 list.add(user2)
 list.add(user3)
 
-# get users
+# iterate through users
 for user in list: ...
+  echo user.id, user.sort, user.value
 
-# get users with an increment counter ('cuz)
-for i, user in list: ...
-
-# get users with sorted value (age, in this case)
-for age, user in list.ranked: ...
-
-# get users in reverse order
-for user in list.ritems: ...
-
-# get users with an increment counter ('cuz) in reverse order
-for i, user in list.rpairs: ...
-
-# get users with sorted value (age, in this case) in reverse order
-for age, user in list.rranked: ...
+# iterate in reverse:
+for age, user in list.reverse:
+  echo user.id, user.sort, user.value
 ```
 
 ## Todo
