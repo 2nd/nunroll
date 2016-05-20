@@ -1,4 +1,4 @@
-var MAX_SEGMENT_SIZE* = 64
+var DENSITY* = 64
 
 type
   Relative = enum
@@ -21,12 +21,12 @@ type
 
 proc newSegment[S, V](): Segment[S, V] =
   new(result)
-  result.values = newSeq[Value[S, V]](MAX_SEGMENT_SIZE)
+  result.values = newSeq[Value[S, V]](DENSITY)
   result.values.setLen(0)
 
 proc newSegment[S, V](value: V, sort: S): Segment[S, V] =
   new(result)
-  result.values = newSeq[Value[S, V]](MAX_SEGMENT_SIZE)
+  result.values = newSeq[Value[S, V]](DENSITY)
   result.values[0] = Value[S, V](value: value, sort: sort)
   result.values.setLen(1)
 
@@ -40,7 +40,7 @@ proc max[S, V](segment: Segment[S, V]): S {.inline.} =
   return segment.values[segment.len - 1].sort
 
 proc hasSpace[S, V](segment: Segment[S, V]): bool {.inline.} =
-  return segment.len < MAX_SEGMENT_SIZE
+  return segment.len < DENSITY
 
 proc add[S, V](segment: Segment[S, V], value: V, sort: S) =
   var insertIndex = segment.len
@@ -123,12 +123,9 @@ proc add*[S, V](list: var List[S, V], value: V) =
   let sort = list.sort(value)
   let found = list.findSegment(sort)
   list.count += 1
-  # if found.segment != nil:
-  #   echo value, " ", found.segment.values, " ", found.rel
-  #   echo ""
 
   if found.rel == Relative.Self:
-    if found.segment.len < MAX_SEGMENT_SIZE:
+    if found.segment.len < DENSITY:
       found.segment.add(value, sort)
     else:
       list.split(found.segment, value, sort)
