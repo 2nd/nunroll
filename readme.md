@@ -1,4 +1,4 @@
-# An Unrolled Link List for nim
+# A Sorted Unrolled Link List for nim
 
 An unrolled linked list is a blend between a dynamic array and a link list. Visualize a linked list where every node is an array of values (rather than an individual value). Each node can hold up to X values, called the `density`.
 

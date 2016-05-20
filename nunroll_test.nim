@@ -2,6 +2,7 @@ import unittest, nunroll, math, times
 
 suite "nunroll":
 
+  # smaller density to force more segments / splits
   nunroll.DENSITY = 4
 
   # checks both the exposed iterator values (items and pair)
