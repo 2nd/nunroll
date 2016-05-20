@@ -62,28 +62,28 @@ proc add[S, V](segment: Segment[S, V], value: V, sort: S) =
 
 # Find which segment a sort value belongs to
 # When the sort belongs within an existing segment, the segment is returned
-# along with a Relative.Self value
+# along with a Self value
 # When the sort belongs to a segment which does not exist, rel will either be
 # Before, After or None. Before and After indicate that a new segment should
 # be created either before or after the provided segment. None means the list
 # is empty and a new segment needs to be added to the head&tail
 proc findSegment[S, V](list: List[S, V], sort: S): tuple[segment: Segment[S, V], rel: Relative] =
   var segment = list.tail
-  if segment.isNil: return (nil, Relative.None)
+  if segment.isNil: return (nil, None)
 
   if sort > segment.max:
     if segment.hasSpace: return (segment, Self)
-    return (segment, Relative.After)
+    return (segment, After)
 
   while not segment.isNil:
     if sort > segment.min:
-      return (segment, Relative.Self)
+      return (segment, Self)
     if segment.prev.isNil and segment.hasSpace:
-      return (segment, Relative.Self)
+      return (segment, Self)
 
     segment = segment.prev
 
-  return (list.head, Relative.Before)
+  return (list.head, Before)
 
 # a new values needs to be inserted in a full node. Split the node, and figure
 # out which of the two new segments should get the value
@@ -125,7 +125,7 @@ proc add*[S, V](list: var List[S, V], value: V) =
   let found = list.findSegment(sort)
   list.count += 1
 
-  if found.rel == Relative.Self:
+  if found.rel == Self:
     if found.segment.len < DENSITY:
       found.segment.add(value, sort)
     else:
@@ -134,7 +134,7 @@ proc add*[S, V](list: var List[S, V], value: V) =
 
   let segment = newSegment(value, sort)
   case found.rel:
-    of Relative.Before:
+    of Before:
       segment.next = found.segment
       segment.prev = found.segment.prev
       found.segment.prev = segment
@@ -144,7 +144,7 @@ proc add*[S, V](list: var List[S, V], value: V) =
       else:
         segment.prev.next = segment
 
-    of Relative.After:
+    of After:
       segment.prev = found.segment
       segment.next = found.segment.next
       found.segment.next = segment
