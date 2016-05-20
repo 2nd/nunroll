@@ -29,6 +29,13 @@ suite "nunroll":
       check(actual == flattened[index])
       index += 1
 
+    # check the ranked iterator
+    index = 0
+    for score, actual in list.ranked:
+      check(actual == flattened[index])
+      check(score == flattened[index])
+      index += 1
+
     # check the head and the tail
     if flattened.len != 0:
       check(list.head.values[0].value == flattened[0])

@@ -4,9 +4,10 @@ type
   Relative = enum
     None, Before, After, Self
 
-  Value[S, V] = object
-    sort*: S
-    value*: V
+  Value*[S, V] = tuple[
+    sort: S,
+    value: V
+  ]
 
   Segment*[S, V] = ref object
     prev*: Segment[S, V]
@@ -27,7 +28,7 @@ proc newSegment[S, V](): Segment[S, V] =
 proc newSegment[S, V](value: V, sort: S): Segment[S, V] =
   new(result)
   result.values = newSeq[Value[S, V]](DENSITY)
-  result.values[0] = Value[S, V](value: value, sort: sort)
+  result.values[0] = (sort: sort, value: value)
   result.values.setLen(1)
 
 proc len[S, V](segment: Segment[S, V]): int {.inline.} =
@@ -50,7 +51,7 @@ proc add[S, V](segment: Segment[S, V], value: V, sort: S) =
       break
 
   # add an extra item at the end of our list
-  let v = Value[S, V](sort: sort, value: value)
+  let v: Value[S, V] = (sort: sort, value: value)
   segment.values.add(v)
 
   # shift everything to the right
@@ -169,4 +170,10 @@ iterator items*[S, V](list: List[S, V]): V =
   var segment = list.head
   while not segment.isNil:
     for value in segment.values: yield value.value
+    segment = segment.next
+
+iterator ranked*[S, V](list: List[S, V]): Value[S, V] =
+  var segment = list.head
+  while not segment.isNil:
+    for value in segment.values: yield value
     segment = segment.next
