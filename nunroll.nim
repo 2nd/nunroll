@@ -1,5 +1,3 @@
-var DENSITY* = 64
-
 type
   Relative = enum
     None, Before, After, Self
@@ -16,32 +14,33 @@ type
 
   List*[S, V] = object
     count: int
+    density: int
     head*: Segment[S, V]
     tail*: Segment[S, V]
     sort: proc(v: V): S
 
-proc newSegment[S, V](): Segment[S, V] =
+proc newSegment[S, V](density: int): Segment[S, V] =
   new(result)
-  result.values = newSeq[Value[S, V]](DENSITY)
+  result.values = newSeq[Value[S, V]](density)
   result.values.setLen(0)
 
-proc newSegment[S, V](value: V, sort: S): Segment[S, V] =
+proc newSegment[S, V](value: V, sort: S, density: int): Segment[S, V] =
   new(result)
-  result.values = newSeq[Value[S, V]](DENSITY)
+  result.values = newSeq[Value[S, V]](density)
   result.values[0] = (sort: sort, value: value)
   result.values.setLen(1)
 
-proc len[S, V](segment: Segment[S, V]): int {.inline.} =
+proc len[S, V](segment: Segment[S, V]): int {.inline, noSideEffect.} =
   return segment.values.len
 
-proc min[S, V](segment: Segment[S, V]): S {.inline.} =
+proc min[S, V](segment: Segment[S, V]): S {.inline, noSideEffect.} =
   return segment.values[0].sort
 
-proc max[S, V](segment: Segment[S, V]): S {.inline.} =
+proc max[S, V](segment: Segment[S, V]): S {.inline, noSideEffect.} =
   return segment.values[segment.len - 1].sort
 
-proc hasSpace[S, V](segment: Segment[S, V]): bool {.inline.} =
-  return segment.len < DENSITY
+proc hasSpace[S, V](segment: Segment[S, V], density: int): bool {.inline, noSideEffect.} =
+  return segment.len < density
 
 proc add[S, V](segment: Segment[S, V], value: V, sort: S) =
   var insertIndex = segment.len
@@ -67,18 +66,18 @@ proc add[S, V](segment: Segment[S, V], value: V, sort: S) =
 # Before, After or None. Before and After indicate that a new segment should
 # be created either before or after the provided segment. None means the list
 # is empty and a new segment needs to be added to the head&tail
-proc findSegment[S, V](list: List[S, V], sort: S): tuple[segment: Segment[S, V], rel: Relative] =
+proc findSegment[S, V](list: List[S, V], sort: S): tuple[segment: Segment[S, V], rel: Relative] {.noSideEffect.} =
   var segment = list.tail
   if segment.isNil: return (nil, None)
 
   if sort > segment.max:
-    if segment.hasSpace: return (segment, Self)
+    if segment.hasSpace(list.density): return (segment, Self)
     return (segment, After)
 
   while not segment.isNil:
     if sort > segment.min:
       return (segment, Self)
-    if segment.prev.isNil and segment.hasSpace:
+    if segment.prev.isNil and segment.hasSpace(list.density):
       return (segment, Self)
 
     segment = segment.prev
@@ -91,7 +90,7 @@ proc findSegment[S, V](list: List[S, V], sort: S): tuple[segment: Segment[S, V],
 # Reuse the segment to keep the "bottom" part of the list.
 
 proc split[S, V](list: var List[S, V], segment: Segment[S, V], value: V, sort: S) =
-  let top = newSegment[S, V]()
+  let top = newSegment[S, V](list.density)
   let cutoff = int(segment.len / 2)
 
   # copy the top part of the segment to the new segment
@@ -115,9 +114,10 @@ proc split[S, V](list: var List[S, V], segment: Segment[S, V], value: V, sort: S
   else:
     top.next.prev = top
 
-proc newNunroll*[S, V](sort: proc(v: V): S): List[S, V] =
+proc newNunroll*[S, V](sort: proc(v: V): S, density: int = 64): List[S, V] =
   result = List[S, V](
-    sort: sort
+    sort: sort,
+    density: density
   )
 
 proc add*[S, V](list: var List[S, V], value: V) =
@@ -126,13 +126,13 @@ proc add*[S, V](list: var List[S, V], value: V) =
   list.count += 1
 
   if found.rel == Self:
-    if found.segment.len < DENSITY:
+    if found.segment.hasSpace(list.density):
       found.segment.add(value, sort)
     else:
       list.split(found.segment, value, sort)
     return
 
-  let segment = newSegment(value, sort)
+  let segment = newSegment(value, sort, list.density)
   case found.rel:
     of Before:
       segment.next = found.segment
@@ -158,33 +158,33 @@ proc add*[S, V](list: var List[S, V], value: V) =
       list.head = segment
       list.tail = segment
 
-proc len*[S, V](list: List[S, V]): int {.inline.} = list.count
+proc len*[S, V](list: List[S, V]): int {.inline, noSideEffect.} = list.count
 
-iterator pairs*[S, V](list: List[S, V]): tuple[key: int, val: V] {.inline.} =
+iterator pairs*[S, V](list: List[S, V]): tuple[key: int, val: V] {.inline, noSideEffect.} =
   var counter = 0
   for value in list.ranked:
     yield(counter, value.value)
     counter += 1
 
-iterator items*[S, V](list: List[S, V]): V {.inline.} =
+iterator items*[S, V](list: List[S, V]): V {.inline, noSideEffect.} =
   for value in list.ranked: yield(value.value)
 
-iterator ranked*[S, V](list: List[S, V]): Value[S, V] =
+iterator ranked*[S, V](list: List[S, V]): Value[S, V] {.noSideEffect.} =
   var segment = list.head
   while not segment.isNil:
     for i in countup(0, <segment.len): yield segment.values[i]
     segment = segment.next
 
-iterator rpairs*[S, V](list: List[S, V]): tuple[key: int, val: V] {.inline.} =
+iterator rpairs*[S, V](list: List[S, V]): tuple[key: int, val: V] {.inline, noSideEffect.} =
   var counter = 0
   for value in list.rranked:
     yield(counter, value.value)
     counter += 1
 
-iterator ritems*[S, V](list: List[S, V]): V {.inline.} =
+iterator ritems*[S, V](list: List[S, V]): V {.inline, noSideEffect.} =
   for value in list.rranked: yield(value.value)
 
-iterator rranked*[S, V](list: List[S, V]): Value[S, V] =
+iterator rranked*[S, V](list: List[S, V]): Value[S, V] {.noSideEffect.} =
   var segment = list.tail
   while not segment.isNil:
     for i in countdown(<segment.len, 0): yield segment.values[i]

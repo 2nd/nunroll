@@ -2,9 +2,6 @@ import unittest, nunroll, math, times
 
 suite "nunroll":
 
-  # smaller density to force more segments / splits
-  nunroll.DENSITY = 4
-
   # checks both the exposed iterator values (items and pair)
   # as well as the internal segment structure to make sure
   # the layout is what it should be
@@ -60,11 +57,11 @@ suite "nunroll":
       check(list.tail.values[list.tail.values.len - 1].value == flattened[flattened.len - 1])
 
   test "empty":
-    let list = newNunroll(proc(i: int): int = i)
+    let list = newNunroll(proc(i: int): int = i, 4)
     checkIter(list, @[])
 
   test "add":
-    var list = newNunroll(proc(i: int): int = i)
+    var list = newNunroll(proc(i: int): int = i, 4)
     list.add(2)
     checkIter(list, @[2])
     list.add(1)
@@ -73,7 +70,7 @@ suite "nunroll":
     checkIter(list, @[1, 2, 3, 6], @[8])
 
   test "add reverse":
-    var list = newNunroll(proc(i: int): int = i)
+    var list = newNunroll(proc(i: int): int = i, 4)
     for i in countdown(9, 0): list.add(i)
     checkIter(list, @[0, 1], @[2, 3, 4, 5], @[6, 7, 8, 9])
 
@@ -83,7 +80,7 @@ suite "nunroll":
     math.randomize(seed)
 
     for i in 0..<1_000:
-      var list = newNunroll(proc(i: int): int = i)
+      var list = newNunroll(proc(i: int): int = i, math.random(4) + 4)
       for i in 0..<math.random(1_000):
         let x = math.random(100_000)
         list.add(x)
