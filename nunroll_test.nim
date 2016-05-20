@@ -2,7 +2,7 @@ import unittest, nunroll, math, times
 
 suite "nunroll":
 
-  nunroll.MAX_SEGMENT_SIZE = 4
+  nunroll.DENSITY = 4
 
   # checks both the exposed iterator values (items and pair)
   # as well as the internal segment structure to make sure
