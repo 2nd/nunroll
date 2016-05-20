@@ -172,7 +172,7 @@ iterator items*[S, V](list: List[S, V]): V {.inline.} =
 iterator ranked*[S, V](list: List[S, V]): Value[S, V] =
   var segment = list.head
   while not segment.isNil:
-    for value in segment.values: yield value
+    for i in countup(0, <segment.len): yield segment.values[i]
     segment = segment.next
 
 iterator rpairs*[S, V](list: List[S, V]): tuple[key: int, val: V] {.inline.} =
