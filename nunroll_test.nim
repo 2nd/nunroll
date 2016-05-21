@@ -28,8 +28,6 @@ suite "nunroll":
     for actual in list.asc:
       let expected = flattened[index]
       check(actual.value == expected)
-      check(actual.id == expected * 2)
-      check(actual.sort == expected * 4)
       index += 1
 
     # check the reverse pairs iterator
@@ -37,8 +35,6 @@ suite "nunroll":
     for actual in list.desc:
       let expected = flattened[flattened.len - index - 1]
       check(actual.value == expected)
-      check(actual.id == expected * 2)
-      check(actual.sort == expected * 4)
       index += 1
 
     # check the head and the tail
@@ -50,6 +46,14 @@ suite "nunroll":
     let list = newNunroll(getter, 4)
     checkIter(list, @[])
 
+  test "stores id, sort and value":
+    let list = newNunroll(getter, 4)
+    list.add(5)
+    for item in list.asc:
+      check(item.id == 10)
+      check(item.sort == 20)
+      check(item.value == 5)
+
   test "add":
     let list = newNunroll(getter, 4)
     list.add(2)
@@ -58,6 +62,16 @@ suite "nunroll":
     checkIter(list, @[1, 2])
     list.add(6); list.add(3); list.add(8);
     checkIter(list, @[1, 2, 3, 6], @[8])
+
+  test "add will add duplicates":
+    let list = newNunroll(getter, 4)
+    list.add(2); list.add(2); list.add(2)
+    checkIter(list, @[2, 2, 2])
+    list.add(3); list.add(3); list.add(2)
+    checkIter(list, @[2, 2, 2], @[2, 3, 3])
+    list.add(1); list.add(5)
+    checkIter(list, @[1, 2, 2, 2], @[2, 3, 3, 5])
+
 
   test "add reverse":
     let list = newNunroll(getter, 4)
