@@ -33,22 +33,34 @@ proc newSegment[I, S, V](item: Item[I, S, V], density: int): Segment[I, S, V] =
   result.items[0] = item
   result.items.setLen(1)
 
+proc `[]`[I, S, V](segment: Segment[I, S, V], i: int): Item[I, S, V] {.inline, noSideEffect.} =
+  return segment.items[i]
+
+proc `[]=`[I, S, V](segment: Segment[I, S, V], i: int, item: Item[I, S, V]) {.inline, noSideEffect.} =
+  segment.items[i] = item
+
 proc len[I, S, V](segment: Segment[I, S, V]): int {.inline, noSideEffect.} =
   return segment.items.len
 
 proc min[I, S, V](segment: Segment[I, S, V]): S {.inline, noSideEffect.} =
-  return segment.items[0].sort
+  return segment[0].sort
 
 proc max[I, S, V](segment: Segment[I, S, V]): S {.inline, noSideEffect.} =
-  return segment.items[segment.len - 1].sort
+  return segment[segment.len - 1].sort
 
 proc hasSpace[I, S, V](segment: Segment[I, S, V], density: int): bool {.inline, noSideEffect.} =
   return segment.len < density
 
+proc index[I, S, V](segment: Segment[I, S, V], id: I): int {.inline, noSideEffect.} =
+  for i in 0..<segment.len:
+    if segment[i].id == id:
+      return i
+  return -1
+
 proc add[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
   var insertIndex = segment.len
   for i in 0..<segment.len:
-    let existing = segment.items[i]
+    let existing = segment[i]
     if existing.sort > item.sort:
       insertIndex = i
       break
@@ -58,9 +70,9 @@ proc add[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
 
   # shift everything to the right
   for i in countdown(segment.len-1, insertIndex+1):
-    segment.items[i] = segment.items[i-1]
+    segment[i] = segment[i-1]
 
-  segment.items[insertIndex] = item
+  segment[insertIndex] = item
 
 # The List has reason to tell us to add this item to the end of our items
 # We trust it (it's probably trying to compact the segments a little)
@@ -72,8 +84,8 @@ proc append[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
 proc prepend[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
   segment.items.add(item) # grow the list by 1
   for i in countdown(segment.len-2, 0):  # shift everything to the right
-    segment.items[i+1] =segment.items[i]
-  segment.items[0] = item
+    segment[i+1] =segment[i]
+  segment[0] = item
 
 # An optimized function used when compacting. By the time this is called, our
 # min value has already been moved to the previous segment. Our job is two-fold:
@@ -83,11 +95,11 @@ proc prepend[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
 # doing an individual pop + add
 proc firstSwap[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
   for i in 1..<segment.len:
-    let existing = segment.items[i]
+    let existing = segment[i]
     if existing.sort < item.sort:
-      segment.items[i-1] = existing
+      segment[i-1] = existing
     else:
-      segment.items[i-1] = item
+      segment[i-1] = item
       return
 
 # Find which segment a sort value belongs to
@@ -99,28 +111,29 @@ proc firstSwap[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
 # is empty and a new segment needs to be added to the head&tail
 proc index*[I, S, V](list: List[I, S, V], item: Item[I, S, V]): tuple[segment: Segment[I, S, V], idx: int, rel: Relative] {.noSideEffect.} =
   let sort = item.sort
+  let head = list.head
+  let tail = list.tail
 
-  var segment = list.tail
-  # if we have no segements, we need to create one
-  if segment.isNil: return (nil, -1, None)
+  # if we have no segements, this is the first item, that's easy.
+  if head.isNil: return (nil, -1, None)
 
-  # if our sort is greater than the tail's max sort
-  if sort >= segment.max:
-    if segment.hasSpace(list.density): return (segment, -1, Self)
-    return (segment, -1, After)
+  # short circuit for new biggest sort (insert ascending)
+  if sort > tail.max:
+    if tail.hasSpace(list.density): return (tail, -1, Self)
+    return (tail, -1, After)
 
-  # if our sort sort is less than the head's min
-  if sort <= list.head.min:
-    if list.head.hasSpace(list.density): return (list.head, -1, Self)
-    return (list.head, -1, Before)
+  # short circuit for new smallest sort (insert descending)
+  if sort < head.min:
+    if head.hasSpace(list.density): return (head, -1, Self)
+    return (head, -1, Before)
 
-  if sort <= list.head.max:
-    #TODO: could bee in here
-    return (list.head, -1, Self)
+  if sort <= head.max:
+    return (head, head.index(item.id), Self)
 
+  var segment = tail
   while not segment.isNil:
     if sort >= segment.min:
-      return (segment, -1, Self)
+      return (segment, segment.index(item.id), Self)
     segment = segment.prev
 
   assert(false, "failed to find index")
@@ -136,7 +149,7 @@ proc split[I, S, V](list: List[I, S, V], segment: Segment[I, S, V], item: Item[I
 
   # copy the top part of the segment to the new segment
   for i in cutoff..<segment.len:
-    top.items.add(segment.items[i])
+    top.items.add(segment[i])
 
   # resize the bottom part
   segment.items.setLen(cutoff)
@@ -239,11 +252,11 @@ proc len*[I, S, V](list: List[I, S, V]): int {.inline, noSideEffect.} = list.cou
 iterator asc*[I, S, V](list: List[I, S, V]): Item[I, S, V] {.inline, noSideEffect.} =
   var segment = list.head
   while not segment.isNil:
-    for i in countup(0, <segment.len): yield segment.items[i]
+    for i in countup(0, <segment.len): yield segment[i]
     segment = segment.next
 
 iterator desc*[I, S, V](list: List[I, S, V]): Item[I, S, V] {.noSideEffect.} =
   var segment = list.tail
   while not segment.isNil:
-    for i in countdown(<segment.len, 0): yield segment.items[i]
+    for i in countdown(<segment.len, 0): yield segment[i]
     segment = segment.prev

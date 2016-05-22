@@ -69,7 +69,7 @@ suite "nunroll":
     checkIter(list, @[2, 2, 2])
 
     list.add(3); list.add(3); list.add(2)
-    checkIter(list, @[2, 2, 2, 2], @[3, 3])
+    checkIter(list, @[2, 2, 2], @[2, 3, 3])
 
     list.add(1); list.add(5)
     checkIter(list, @[1, 2, 2, 2], @[2, 3, 3, 5])
