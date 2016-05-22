@@ -47,7 +47,8 @@ proc hasSpace[I, S, V](segment: Segment[I, S, V], density: int): bool {.inline, 
 
 proc add[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
   var insertIndex = segment.len
-  for i, existing in segment.items:
+  for i in 0..<segment.len:
+    let existing = segment.items[i]
     if existing.sort > item.sort:
       insertIndex = i
       break
@@ -61,6 +62,34 @@ proc add[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
 
   segment.items[insertIndex] = item
 
+# The List has reason to tell us to add this item to the end of our items
+# We trust it (it's probably trying to compact the segments a little)
+proc append[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
+  segment.items.add(item)
+
+# The List has reason to tell us to add this item to the front of our items
+# We trust it (it's probably trying to compact the segments a little)
+proc prepend[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
+  segment.items.add(item) # grow the list by 1
+  for i in countdown(segment.len-2, 0):  # shift everything to the right
+    segment.items[i+1] =segment.items[i]
+  segment.items[0] = item
+
+# An optimized function used when compacting. By the time this is called, our
+# min value has already been moved to the previous segment. Our job is two-fold:
+# 1 - Remove the min
+# 2 - Add the new item (which might go anywhere in the segment)
+# Since we know both these things have to happen, we can be more efficient than
+# doing an individual pop + add
+proc firstSwap[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
+  for i in 1..<segment.len:
+    let existing = segment.items[i]
+    if existing.sort < item.sort:
+      segment.items[i-1] = existing
+    else:
+      segment.items[i-1] = item
+      return
+
 # Find which segment a sort value belongs to
 # When the sort belongs within an existing segment, the segment is returned
 # along with a Self value
@@ -68,23 +97,33 @@ proc add[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
 # Before, After or None. Before and After indicate that a new segment should
 # be created either before or after the provided segment. None means the list
 # is empty and a new segment needs to be added to the head&tail
-proc findSegment[I, S, V](list: List[I, S, V], sort: S): tuple[segment: Segment[I, S, V], rel: Relative] {.noSideEffect.} =
-  var segment = list.tail
-  if segment.isNil: return (nil, None)
+proc index*[I, S, V](list: List[I, S, V], item: Item[I, S, V]): tuple[segment: Segment[I, S, V], idx: int, rel: Relative] {.noSideEffect.} =
+  let sort = item.sort
 
-  if sort > segment.max:
-    if segment.hasSpace(list.density): return (segment, Self)
-    return (segment, After)
+  var segment = list.tail
+  # if we have no segements, we need to create one
+  if segment.isNil: return (nil, -1, None)
+
+  # if our sort is greater than the tail's max sort
+  if sort >= segment.max:
+    if segment.hasSpace(list.density): return (segment, -1, Self)
+    return (segment, -1, After)
+
+  # if our sort sort is less than the head's min
+  if sort <= list.head.min:
+    if list.head.hasSpace(list.density): return (list.head, -1, Self)
+    return (list.head, -1, Before)
+
+  if sort <= list.head.max:
+    #TODO: could bee in here
+    return (list.head, -1, Self)
 
   while not segment.isNil:
-    if sort > segment.min:
-      return (segment, Self)
-    if segment.prev.isNil and segment.hasSpace(list.density):
-      return (segment, Self)
-
+    if sort >= segment.min:
+      return (segment, -1, Self)
     segment = segment.prev
 
-  return (list.head, Before)
+  assert(false, "failed to find index")
 
 # a new values needs to be inserted in a full node. Split the node, and figure
 # out which of the two new segments should get the value
@@ -123,43 +162,77 @@ proc newNunroll*[I, S, V](getter: Getter[I, S, V], density: int = 64): List[I, S
   )
 
 proc add*[I, S, V](list: List[I, S, V], value: V) =
+  let density = list.density
   let item = list.getter(value)
+  let found = list.index(item)
+  let target = found.segment
 
-  let found = list.findSegment(item.sort)
   list.count += 1
 
+  # the first segment
+  if target.isNil:
+    let segment = newSegment(item, density)
+    list.head = segment
+    list.tail = segment
+    return
+
+  # Value belongs in a specific segment
   if found.rel == Self:
-    if found.segment.hasSpace(list.density):
-      found.segment.add(item)
+    if target.hasSpace(density):
+      target.add(item)
     else:
-      list.split(found.segment, item)
+      list.split(target, item)
+    return
+
+  # We *think* we need to create a new segment relative to X.
+  # Before we take such a drastc step, let's see if we can free some in X by
+  # moving an item to its next or prev segment
+
+  # Does our prev have space? If so, move target's min value there.
+  # - We append the target's min to the previous segment
+  # - We call the specialized firstSwap to remove the first item and add the new item
+  if not target.prev.isNil and target.prev.hasSpace(density):
+    let first = target.items[0]
+    target.prev.append(first)
+    target.firstSwap(item)
+    return
+
+  # Does our next have space? If so, move the target's max value there.
+  # - We append the target's max to the next segment
+  # - We set shrink the target's length by 1
+  # - We add the new item
+  if not target.next.isNil and target.next.hasSpace(density):
+    let last = target.items[target.len - 1]
+    target.next.prepend(last)
+    target.items.setLen(target.len - 1)
+    target.add(item)
     return
 
   let segment = newSegment(item, list.density)
-  case found.rel:
-    of Before:
-      segment.next = found.segment
-      segment.prev = found.segment.prev
-      found.segment.prev = segment
+  if found.rel == Before:
+    segment.next = target
+    segment.prev = target.prev
+    target.prev = segment
 
-      if segment.prev.isNil:
-        list.head = segment
-      else:
-        segment.prev.next = segment
-
-    of After:
-      segment.prev = found.segment
-      segment.next = found.segment.next
-      found.segment.next = segment
-
-      if segment.next.isNil:
-        list.tail = segment
-      else:
-        segment.next.prev = segment
-
-    else:
+    if segment.prev.isNil:
       list.head = segment
+    else:
+      segment.prev.next = segment
+
+  else: # after
+    segment.prev = target
+    segment.next = target.next
+    target.next = segment
+
+    if segment.next.isNil:
       list.tail = segment
+    else:
+      segment.next.prev = segment
+
+# proc delete*[I, S, V](list: List[I, S, V], id: I): bool =
+#
+# proc delete*[I, S, V](list: List[I, S, V], id: I): bool {.inline.} =
+#   list.delete(list.getter(value).id)
 
 proc len*[I, S, V](list: List[I, S, V]): int {.inline, noSideEffect.} = list.count
 
