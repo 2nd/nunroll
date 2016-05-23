@@ -33,31 +33,22 @@ proc newSegment[I, S, V](item: Item[I, S, V], density: int): Segment[I, S, V] =
   result.items[0] = item
   result.items.setLen(1)
 
-proc `[]`[I, S, V](segment: Segment[I, S, V], i: int): Item[I, S, V] {.inline, noSideEffect.} =
-  return segment.items[i]
-
-proc `[]=`[I, S, V](segment: Segment[I, S, V], i: int, item: Item[I, S, V]) {.inline, noSideEffect.} =
-  segment.items[i] = item
-
-proc len[I, S, V](segment: Segment[I, S, V]): int {.inline, noSideEffect.} =
-  return segment.items.len
-
 proc min[I, S, V](segment: Segment[I, S, V]): S {.inline, noSideEffect.} =
-  return segment[0].sort
+  return segment.items[0].sort
 
 proc max[I, S, V](segment: Segment[I, S, V]): S {.inline, noSideEffect.} =
-  return segment[segment.len - 1].sort
+  return segment.items[segment.items.len - 1].sort
 
 proc index[I, S, V](segment: Segment[I, S, V], id: I): int {.inline, noSideEffect.} =
-  for i in 0..<segment.len:
-    if segment[i].id == id:
+  for i in 0..<segment.items.len:
+    if segment.items[i].id == id:
       return i
   return -1
 
 proc add[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
-  var insertIndex = segment.len
-  for i in 0..<segment.len:
-    let existing = segment[i]
+  var insertIndex = segment.items.len
+  for i in 0..<segment.items.len:
+    let existing = segment.items[i]
     if existing.sort > item.sort:
       insertIndex = i
       break
@@ -66,10 +57,10 @@ proc add[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
   segment.items.add(item)
 
   # shift everything to the right
-  for i in countdown(segment.len-1, insertIndex+1):
-    segment[i] = segment[i-1]
+  for i in countdown(segment.items.len-1, insertIndex+1):
+    segment.items[i] = segment.items[i-1]
 
-  segment[insertIndex] = item
+  segment.items[insertIndex] = item
 
 # The List has reason to tell us to add this item to the end of our items
 # We trust it (it's probably trying to compact the segments a little)
@@ -80,9 +71,9 @@ proc append[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
 # We trust it (it's probably trying to compact the segments a little)
 proc prepend[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
   segment.items.add(item) # grow the list by 1
-  for i in countdown(segment.len-2, 0):  # shift everything to the right
-    segment[i+1] =segment[i]
-  segment[0] = item
+  for i in countdown(segment.items.len-2, 0):  # shift everything to the right
+    segment.items[i+1] =segment.items[i]
+  segment.items[0] = item
 
 # An optimized function used when compacting. By the time this is called, our
 # min value has already been moved to the previous segment. Our job is two-fold:
@@ -91,43 +82,28 @@ proc prepend[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
 # Since we know both these things have to happen, we can be more efficient than
 # doing an individual pop + add
 proc firstSwap[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
-  for i in 1..<segment.len:
-    let existing = segment[i]
+  for i in 1..<segment.items.len:
+    let existing = segment.items[i]
     if existing.sort < item.sort:
-      segment[i-1] = existing
+      segment.items[i-1] = existing
     else:
-      segment[i-1] = item
+      segment.items[i-1] = item
       return
-  segment[segment.len-1] = item
-
-# remove the item at oldIdx, add Item
-proc replace[I, S, V](segment: Segment[I, S, V], oldIdx: int, item: Item[I, S, V]) =
-  let oldSort = segment[oldIdx].sort
-  segment[oldIdx] = item
-  if oldSort < item.sort:
-    for i in oldIdx+1..<segment.len:
-      if segment[i].sort >= item.sort: return
-      segment[i-1] = segment[i]
-      segment[i] = item
-  else:
-    for i in countdown(oldIdx-1, 0):
-      if segment[i].sort <= item.sort: return
-      segment[i+1] = segment[i]
-      segment[i] = item
+  segment.items[segment.items.len-1] = item
 
 # delete the element at the specific index
 proc del[I, S, V](segment: Segment[I, S, V], idx: int) =
   assert(idx >= 0, "delete negative segment idx")
 
-  for i in idx+1..<segment.len:
-    segment[i-1] = segment[i]
+  for i in idx+1..<segment.items.len:
+    segment.items[i-1] = segment.items[i]
 
-  segment.items.setLen(segment.len - 1)
+  segment.items.setLen(segment.items.len - 1)
 
 # return how much freespace a segment has
 proc freeSpace[I, S, V](list: List[I, S, V], segment: Segment[I, S, V]): int {.inline.} =
   if segment.isNil: return 0
-  return list.density - segment.len
+  return list.density - segment.items.len
 
 # merge one segment into another:
 proc merge[I, S, V](list: List[I, S, V], smaller: Segment[I, S, V], larger: Segment[I, S, V]) =
@@ -142,7 +118,7 @@ proc merge[I, S, V](list: List[I, S, V], smaller: Segment[I, S, V], larger: Segm
 
 # removes an empty segment
 proc remove[I, S, V](list: List[I, S, V], segment: Segment[I, S, V]) =
-  assert(segment.len == 0, "removing non-empty segment")
+  assert(segment.items.len == 0, "removing non-empty segment")
   if not segment.next.isNil:
     segment.next.prev = segment.prev
   else:
@@ -196,8 +172,8 @@ proc index[I, S, V](list: List[I, S, V], start: Segment[I, S, V], item: Item[I, 
 
   var segment = start
   while not segment.isNil and sort >= segment.min:
-    for i in 0..<segment.len:
-      if segment[i].id == id: return (segment, i)
+    for i in 0..<segment.items.len:
+      if segment.items[i].id == id: return (segment, i)
     segment = segment.prev
 
   return (nil, -1)
@@ -208,11 +184,11 @@ proc index[I, S, V](list: List[I, S, V], start: Segment[I, S, V], item: Item[I, 
 # Reuse the segment to keep the "bottom" part of the list.
 proc split[I, S, V](list: List[I, S, V], segment: Segment[I, S, V], item: Item[I, S, V]) =
   let top = newSegment[I, S, V](list.density)
-  let cutoff = int(segment.len / 2)
+  let cutoff = int(segment.items.len / 2)
 
   # copy the top part of the segment to the new segment
-  for i in cutoff..<segment.len:
-    top.items.add(segment[i])
+  for i in cutoff..<segment.items.len:
+    top.items.add(segment.items[i])
 
   # resize the bottom part
   segment.items.setLen(cutoff)
@@ -249,7 +225,7 @@ proc del[I, S, V](list: List[I, S, V], item: Item[I, S, V]): bool {.discardable.
   list.count -= 1
 
   # can we merge the segment with a neighbour?
-  let length = segment.len
+  let length = segment.items.len
   if length == 0:
     list.remove(segment)
   elif list.freeSpace(segment.prev) >= length:
@@ -321,9 +297,9 @@ proc update*[I, S, V](list: List[I, S, V], newValue: V, oldValue: V) =
   # - We set shrink the target's length by 1
   # - We add the new item
   if not target.next.isNil and list.freespace(target.next) > 0:
-    let last = target.items[target.len - 1]
+    let last = target.items[target.items.len - 1]
     target.next.prepend(last)
-    target.items.setLen(target.len - 1)
+    target.items.setLen(target.items.len - 1)
     target.add(item)
     return
 
@@ -357,11 +333,11 @@ proc len*[I, S, V](list: List[I, S, V]): int {.inline, noSideEffect.} = list.cou
 iterator asc*[I, S, V](list: List[I, S, V]): Item[I, S, V] {.inline, noSideEffect.} =
   var segment = list.head
   while not segment.isNil:
-    for i in countup(0, <segment.len): yield segment[i]
+    for i in countup(0, <segment.items.len): yield segment.items[i]
     segment = segment.next
 
 iterator desc*[I, S, V](list: List[I, S, V]): Item[I, S, V] {.noSideEffect.} =
   var segment = list.tail
   while not segment.isNil:
-    for i in countdown(<segment.len, 0): yield segment[i]
+    for i in countdown(<segment.items.len, 0): yield segment.items[i]
     segment = segment.prev
