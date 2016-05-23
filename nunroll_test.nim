@@ -11,7 +11,7 @@ suite "nunroll":
   # checks both the exposed iterator values (items and pair)
   # as well as the internal segment structure to make sure
   # the layout is what it should be
-  proc checkIter[I, S, V](list: nunroll.List[I, S, V], all: varargs[seq[V]]) =
+  proc checkList[I, S, V](list: nunroll.List[I, S, V], all: varargs[seq[V]]) =
     # first, check the segment structure
     var segment = list.head
     var flattened = newSeq[V]()
@@ -44,7 +44,7 @@ suite "nunroll":
 
   test "empty":
     let list = newNunroll(getter, 4)
-    checkIter(list, @[])
+    checkList(list, @[])
 
   test "stores id, sort and value":
     let list = newNunroll(getter, 4)
@@ -57,27 +57,27 @@ suite "nunroll":
   test "add":
     let list = newNunroll(getter, 4)
     list.add(2)
-    checkIter(list, @[2])
+    checkList(list, @[2])
     list.add(1)
-    checkIter(list, @[1, 2])
+    checkList(list, @[1, 2])
     list.add(6); list.add(3); list.add(8);
-    checkIter(list, @[1, 2, 3, 6], @[8])
+    checkList(list, @[1, 2, 3, 6], @[8])
 
   test "add will add duplicates":
     let list = newNunroll(getter, 4)
     list.add(2); list.add(2); list.add(2)
-    checkIter(list, @[2, 2, 2])
+    checkList(list, @[2, 2, 2])
 
     list.add(3); list.add(3); list.add(2)
-    checkIter(list, @[2, 2, 2], @[2, 3, 3])
+    checkList(list, @[2, 2, 2], @[2, 3, 3])
 
     list.add(1); list.add(5)
-    checkIter(list, @[1, 2, 2, 2], @[2, 3, 3, 5])
+    checkList(list, @[1, 2, 2, 2], @[2, 3, 3, 5])
 
   test "add reverse":
     let list = newNunroll(getter, 4)
     for i in countdown(9, 0): list.add(i)
-    checkIter(list, @[0, 1], @[2, 3, 4, 5], @[6, 7, 8, 9])
+    checkList(list, @[0, 1], @[2, 3, 4, 5], @[6, 7, 8, 9])
 
   test "randomness":
     for i in 0..<1_000:
@@ -89,3 +89,46 @@ suite "nunroll":
       for item in list.asc:
         check(item.sort >= prev)
         prev = item.sort
+
+  test "delete empty":
+    let list = newNunroll(getter, 4)
+    check(list.delete(5) == false)
+    checkList(list, @[])
+
+  test "delete miss":
+    let list = newNunroll(getter, 4)
+    list.add(4)
+    check(list.delete(5) == false)
+    checkList(list, @[4])
+
+    list.add(6)
+    check(list.delete(5) == false)
+    checkList(list, @[4, 6])
+
+  test "delete when 1":
+    let list = newNunroll(getter, 4)
+    list.add(4)
+    check(list.delete(4) == true)
+    checkList(list, @[])
+
+  test "delete when 2":
+    let list = newNunroll(getter, 4)
+    list.add(4); list.add(6)
+    check(list.delete(4) == true)
+    checkList(list, @[6])
+
+    check(list.delete(6) == true)
+    checkList(list, @[])
+
+  test "delete from multiple segments":
+    let list = newNunroll(getter, 4)
+    for i in 1..10: list.add(i)
+
+    check(list.delete(0) == false)
+    checkList(list, @[1, 2, 3, 4], @[5, 6, 7, 8], @[9, 10])
+
+    list.delete(4)
+    checkList(list, @[1, 2, 3], @[5, 6, 7, 8], @[9, 10])
+
+    list.delete(5); list.delete(6)
+    checkList(list, @[1, 2, 3], @[7, 8, 9, 10])

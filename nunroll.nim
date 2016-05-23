@@ -48,9 +48,6 @@ proc min[I, S, V](segment: Segment[I, S, V]): S {.inline, noSideEffect.} =
 proc max[I, S, V](segment: Segment[I, S, V]): S {.inline, noSideEffect.} =
   return segment[segment.len - 1].sort
 
-proc hasSpace[I, S, V](segment: Segment[I, S, V], density: int): bool {.inline, noSideEffect.} =
-  return segment.len < density
-
 proc index[I, S, V](segment: Segment[I, S, V], id: I): int {.inline, noSideEffect.} =
   for i in 0..<segment.len:
     if segment[i].id == id:
@@ -102,47 +99,100 @@ proc firstSwap[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
       segment[i-1] = item
       return
 
-# Find which segment a sort value belongs to
+# delete the element at the specific index
+proc delete[I, S, V](segment: Segment[I, S, V], idx: int) =
+  assert(idx >= 0, "delete negative segment idx")
+
+  for i in idx+1..<segment.len:
+    segment[i-1] = segment[i]
+
+  segment.items.setLen(segment.len - 1)
+
+# return how much freespace a segment has
+proc freeSpace[I, S, V](list: List[I, S, V], segment: Segment[I, S, V]): int {.inline.} =
+  if segment.isNil: return 0
+  return list.density - segment.len
+
+# merge one segment into another:
+proc merge[I, S, V](list: List[I, S, V], smaller: Segment[I, S, V], larger: Segment[I, S, V]) =
+  for item in larger.items:
+    smaller.items.add(item)
+
+  smaller.next = larger.next
+  if not smaller.next.isNil:
+    smaller.next.prev = smaller
+  else:
+    list.tail = smaller
+
+# removes an empty segment
+proc remove[I, S, V](list: List[I, S, V], segment: Segment[I, S, V]) =
+  assert(segment.len == 0, "removing non-empty segment")
+  if not segment.next.isNil:
+    segment.next.prev = segment.prev
+  else:
+    list.tail = segment.prev
+
+  if not segment.prev.isNil:
+    segment.prev.next = segment.next
+  else:
+    list.head = segment.next
+
+# Find which segment a sort value belongs to.
 # When the sort belongs within an existing segment, the segment is returned
 # along with a Self value
 # When the sort belongs to a segment which does not exist, rel will either be
 # Before, After or None. Before and After indicate that a new segment should
 # be created either before or after the provided segment. None means the list
 # is empty and a new segment needs to be added to the head&tail
-proc index*[I, S, V](list: List[I, S, V], item: Item[I, S, V]): tuple[segment: Segment[I, S, V], idx: int, rel: Relative] {.noSideEffect.} =
+proc findSegment[I, S, V](list: List[I, S, V], item: Item[I, S, V]): tuple[segment: Segment[I, S, V], rel: Relative] {.noSideEffect.} =
   let sort = item.sort
   let head = list.head
   let tail = list.tail
 
   # if we have no segements, this is the first item, that's easy.
-  if head.isNil: return (nil, -1, None)
+  if head.isNil: return (nil, None)
 
   # short circuit for new biggest sort (insert ascending)
   if sort > tail.max:
-    if tail.hasSpace(list.density): return (tail, -1, Self)
-    return (tail, -1, After)
+    if list.freeSpace(tail) > 0: return (tail, Self)
+    return (tail, After)
 
   # short circuit for new smallest sort (insert descending)
   if sort < head.min:
-    if head.hasSpace(list.density): return (head, -1, Self)
-    return (head, -1, Before)
+    if list.freeSpace(head) > 0: return (head, Self)
+    return (head, Before)
 
   if sort <= head.max:
-    return (head, head.index(item.id), Self)
+    return (head, Self)
 
   var segment = tail
   while not segment.isNil:
     if sort >= segment.min:
-      return (segment, segment.index(item.id), Self)
+      return (segment, Self)
     segment = segment.prev
 
   assert(false, "failed to find index")
 
-# a new values needs to be inserted in a full node. Split the node, and figure
+# Finds the index of a specific item (by id). This should be called after findSegment
+# to find the initial segment to start searching. It should only be called when findSegment
+# return rel == Self. In all other cases, the specific item is not in the list and this
+# procedure should not be called.
+proc index[I, S, V](list: List[I, S, V], start: Segment[I, S, V], item: Item[I, S, V]): tuple[segment: Segment[I, S, V], idx: int] =
+  let id = item.id
+  let sort = item.sort
+
+  var segment = start
+  while not segment.isNil and sort >= segment.min:
+    for i in 0..<segment.len:
+      if segment[i].id == id: return (segment, i)
+    segment = segment.prev
+
+  return (nil, -1)
+
+# a new values needs to be inserted in a full segment. Split the segment, and figure
 # out which of the two new segments should get the value
 #
 # Reuse the segment to keep the "bottom" part of the list.
-
 proc split[I, S, V](list: List[I, S, V], segment: Segment[I, S, V], item: Item[I, S, V]) =
   let top = newSegment[I, S, V](list.density)
   let cutoff = int(segment.len / 2)
@@ -174,10 +224,12 @@ proc newNunroll*[I, S, V](getter: Getter[I, S, V], density: int = 64): List[I, S
     density: density
   )
 
+# Adds the value to the list. Will add duplicates. Use update for add-or-replace
+# behavior
 proc add*[I, S, V](list: List[I, S, V], value: V) =
   let density = list.density
   let item = list.getter(value)
-  let found = list.index(item)
+  let found = list.findSegment(item)
   let target = found.segment
 
   list.count += 1
@@ -191,7 +243,7 @@ proc add*[I, S, V](list: List[I, S, V], value: V) =
 
   # Value belongs in a specific segment
   if found.rel == Self:
-    if target.hasSpace(density):
+    if list.freeSpace(target) > 0:
       target.add(item)
     else:
       list.split(target, item)
@@ -204,7 +256,7 @@ proc add*[I, S, V](list: List[I, S, V], value: V) =
   # Does our prev have space? If so, move target's min value there.
   # - We append the target's min to the previous segment
   # - We call the specialized firstSwap to remove the first item and add the new item
-  if not target.prev.isNil and target.prev.hasSpace(density):
+  if not target.prev.isNil and list.freeSpace(target.prev) > 0:
     let first = target.items[0]
     target.prev.append(first)
     target.firstSwap(item)
@@ -214,7 +266,7 @@ proc add*[I, S, V](list: List[I, S, V], value: V) =
   # - We append the target's max to the next segment
   # - We set shrink the target's length by 1
   # - We add the new item
-  if not target.next.isNil and target.next.hasSpace(density):
+  if not target.next.isNil and list.freespace(target.next) > 0:
     let last = target.items[target.len - 1]
     target.next.prepend(last)
     target.items.setLen(target.len - 1)
@@ -242,10 +294,26 @@ proc add*[I, S, V](list: List[I, S, V], value: V) =
     else:
       segment.next.prev = segment
 
-# proc delete*[I, S, V](list: List[I, S, V], id: I): bool =
-#
-# proc delete*[I, S, V](list: List[I, S, V], id: I): bool {.inline.} =
-#   list.delete(list.getter(value).id)
+proc delete*[I, S, V](list: List[I, S, V], value: V): bool {.discardable.} =
+  let item = list.getter(value)
+  let found = list.findSegment(item)
+  if found.rel != Self: return false
+
+  let index = list.index(found.segment, item)
+  let segment = index.segment
+  if segment.isNil: return false
+
+  segment.delete(index.idx)
+  # can we merge the segment with a neighbour?
+  let length = segment.len
+  if length == 0:
+    list.remove(segment)
+  elif list.freeSpace(segment.prev) >= length:
+    list.merge(segment.prev, segment)
+  elif list.freeSpace(segment.next) >= length:
+    list.merge(segment, segment.next)
+  list.count -= 1
+  return true
 
 proc len*[I, S, V](list: List[I, S, V]): int {.inline, noSideEffect.} = list.count
 
