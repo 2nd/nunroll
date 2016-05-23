@@ -1,6 +1,6 @@
 type
   Relative = enum
-    None, Before, After, Self
+    Before, After, Self
 
   Item*[I, S, V] = tuple[
     id: I,
@@ -98,9 +98,25 @@ proc firstSwap[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
     else:
       segment[i-1] = item
       return
+  segment[segment.len-1] = item
+
+# remove the item at oldIdx, add Item
+proc replace[I, S, V](segment: Segment[I, S, V], oldIdx: int, item: Item[I, S, V]) =
+  let oldSort = segment[oldIdx].sort
+  segment[oldIdx] = item
+  if oldSort < item.sort:
+    for i in oldIdx+1..<segment.len:
+      if segment[i].sort >= item.sort: return
+      segment[i-1] = segment[i]
+      segment[i] = item
+  else:
+    for i in countdown(oldIdx-1, 0):
+      if segment[i].sort <= item.sort: return
+      segment[i+1] = segment[i]
+      segment[i] = item
 
 # delete the element at the specific index
-proc delete[I, S, V](segment: Segment[I, S, V], idx: int) =
+proc del[I, S, V](segment: Segment[I, S, V], idx: int) =
   assert(idx >= 0, "delete negative segment idx")
 
   for i in idx+1..<segment.len:
@@ -149,9 +165,6 @@ proc findSegment[I, S, V](list: List[I, S, V], item: Item[I, S, V]): tuple[segme
   let head = list.head
   let tail = list.tail
 
-  # if we have no segements, this is the first item, that's easy.
-  if head.isNil: return (nil, None)
-
   # short circuit for new biggest sort (insert ascending)
   if sort > tail.max:
     if list.freeSpace(tail) > 0: return (tail, Self)
@@ -162,7 +175,7 @@ proc findSegment[I, S, V](list: List[I, S, V], item: Item[I, S, V]): tuple[segme
     if list.freeSpace(head) > 0: return (head, Self)
     return (head, Before)
 
-  if sort <= head.max:
+  if sort < head.max:
     return (head, Self)
 
   var segment = tail
@@ -224,23 +237,64 @@ proc newNunroll*[I, S, V](getter: Getter[I, S, V], density: int = 64): List[I, S
     density: density
   )
 
-# Adds the value to the list. Will add duplicates. Use update for add-or-replace
-# behavior
-proc add*[I, S, V](list: List[I, S, V], value: V) =
+proc del[I, S, V](list: List[I, S, V], item: Item[I, S, V]): bool {.discardable.} =
+  let found = list.findSegment(item)
+  if found.rel != Self: return false
+
+  let index = list.index(found.segment, item)
+  if index.segment.isNil: return false
+
+  let segment = index.segment
+  segment.del(index.idx)
+  list.count -= 1
+
+  # can we merge the segment with a neighbour?
+  let length = segment.len
+  if length == 0:
+    list.remove(segment)
+  elif list.freeSpace(segment.prev) >= length:
+    list.merge(segment.prev, segment)
+  elif list.freeSpace(segment.next) >= length:
+    list.merge(segment, segment.next)
+
+  return true
+
+proc add*[I, S, V](list: List[I, S, V], newValue: V) {.inline.} =
+  list.update(newValue, nil)
+
+# Adds or updates the value. If oldValue is nil, it is assumed that newValue represents
+# a distinctly new item. If oldValue is not nil, additional checks are made to
+# ensure no duplicate is set.
+proc update*[I, S, V](list: List[I, S, V], newValue: V, oldValue: V) =
   let density = list.density
-  let item = list.getter(value)
+  let item = list.getter(newValue)
+
+  # optimized for when the value has changed, but not its sort
+  if not oldValue.isNil:
+    let oldItem = list.getter(oldValue)
+    assert(oldItem.id == item.id, "update oldValue should have same id as newValue")
+
+    if oldItem.sort == item.sort:
+      let found = list.findSegment(item)
+      let oldIndex = list.index(found.segment, oldItem)
+      if not oldIndex.segment.isNil:
+        # sort hasn't changed, can just overwrite existing one
+        oldIndex.segment.items[oldIndex.idx] = item
+        return
+    else:
+      list.del(oldItem)
+
+  if list.head.isNil:
+    let segment = newSegment(item, density)
+    list.head = segment
+    list.tail = segment
+    list.count = 1
+    return
+
   let found = list.findSegment(item)
   let target = found.segment
 
   list.count += 1
-
-  # the first segment
-  if target.isNil:
-    let segment = newSegment(item, density)
-    list.head = segment
-    list.tail = segment
-    return
-
   # Value belongs in a specific segment
   if found.rel == Self:
     if list.freeSpace(target) > 0:
@@ -294,26 +348,9 @@ proc add*[I, S, V](list: List[I, S, V], value: V) =
     else:
       segment.next.prev = segment
 
-proc delete*[I, S, V](list: List[I, S, V], value: V): bool {.discardable.} =
-  let item = list.getter(value)
-  let found = list.findSegment(item)
-  if found.rel != Self: return false
-
-  let index = list.index(found.segment, item)
-  let segment = index.segment
-  if segment.isNil: return false
-
-  segment.delete(index.idx)
-  # can we merge the segment with a neighbour?
-  let length = segment.len
-  if length == 0:
-    list.remove(segment)
-  elif list.freeSpace(segment.prev) >= length:
-    list.merge(segment.prev, segment)
-  elif list.freeSpace(segment.next) >= length:
-    list.merge(segment, segment.next)
-  list.count -= 1
-  return true
+proc del*[I, S, V](list: List[I, S, V], value: V): bool {.discardable.} =
+  if list.head.isNil: return false
+  list.del(list.getter(value))
 
 proc len*[I, S, V](list: List[I, S, V]): int {.inline, noSideEffect.} = list.count
 
