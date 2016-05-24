@@ -150,7 +150,7 @@ suite "nunroll":
       let list = newNunroll(userInfo, math.random(64) + 32)
 
       for j in 0..<math.random(500)+100:
-        if i mod 6 == 0:
+        if j mod 6 == 0:
           for id, user in master:
             check(list.del(user) == true)
             master.del(id)

@@ -1,3 +1,11 @@
+# Finding an item (used for updates and deletes) involves first finding the first
+# possible segment based on the item's sort, then iterating over adjacent segments
+# for the specific item. This dual-stage approach is [usually] more efficient since
+# finding a segment is O(N/M) where N is the total number of elements and M is the
+# segment density. However, values with low cardinality might have the same sort
+# value spread across multiple adjacent segments. Therefore, we must also scan the
+# found segment's siblings until either the item is found (by id) or the sort changes.
+# If the sort changes, the item isn't in the list.
 type
   Relative = enum
     Before, After, Self
@@ -39,15 +47,10 @@ proc min[I, S, V](segment: Segment[I, S, V]): S {.inline, noSideEffect.} =
 proc max[I, S, V](segment: Segment[I, S, V]): S {.inline, noSideEffect.} =
   return segment.items[segment.items.len - 1].sort
 
-proc index[I, S, V](segment: Segment[I, S, V], id: I): int {.inline, noSideEffect.} =
-  for i in 0..<segment.items.len:
-    if segment.items[i].id == id:
-      return i
-  return -1
-
 proc add[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
-  var insertIndex = segment.items.len
-  for i in 0..<segment.items.len:
+  let length = segment.items.len
+  var insertIndex = length
+  for i in 0..<length:
     let existing = segment.items[i]
     if existing.sort > item.sort:
       insertIndex = i
@@ -57,7 +60,7 @@ proc add[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
   segment.items.add(item)
 
   # shift everything to the right
-  for i in countdown(segment.items.len-1, insertIndex+1):
+  for i in countdown(length, insertIndex+1):
     segment.items[i] = segment.items[i-1]
 
   segment.items[insertIndex] = item
@@ -171,7 +174,7 @@ proc index[I, S, V](list: List[I, S, V], start: Segment[I, S, V], item: Item[I, 
   let sort = item.sort
 
   var segment = start
-  while not segment.isNil and sort >= segment.min:
+  while not segment.isNil and sort <= segment.max:
     for i in 0..<segment.items.len:
       if segment.items[i].id == id: return (segment, i)
     segment = segment.prev
