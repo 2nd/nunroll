@@ -5,8 +5,12 @@ type User = ref object
   id: int
   createdAt: int
 
-proc userInfo(user: User): nunroll.Item[int, int, User] {.noSideEffect.} =
-  return (id: user.id, sort: user.createdAt, value: user)
+proc `==`(left, right: User): bool {.inline.} = left.id == right.id
+
+proc comparer(left, right: User): int {.noSideEffect.} =
+  if left.createdAt < right.createdAt: return -1
+  if left.createdAt > right.createdAt: return 1
+  return 0
 
 proc newUser(id: int, createdAt: int = -1): User =
   new(result)
@@ -17,15 +21,14 @@ proc `$`(user: User): string =
   if user.isNil: return "nil"
   else: return "id: " & $user.id & ", sort: " & $user.createdAt
 
-proc debug[I, S, V](list: List[I, S, V]) =
+proc debug[V](list: List[V]) =
   echo ""
   var node = list.head
   while not node.isNil:
-    echo node.items.map(proc(item: Item[int, int, User]): int = item.id)
+    echo node.items
     node = node.next
 
 suite "nunroll":
-
   let seed = int(times.cpuTime() * 10000000)
   echo "random seed ", seed
   math.randomize(seed)
@@ -33,7 +36,7 @@ suite "nunroll":
   # checks both the exposed iterator values (items and pair)
   # as well as the internal segment structure to make sure
   # the layout is what it should be
-  proc checkList(list: nunroll.List[int, int, User], all: varargs[seq[int]]) =
+  proc checkList(list: nunroll.List[User], all: varargs[seq[int]]) =
     # first, check the segment structure
     var segment = list.head
     var flattened = newSeq[int]()
@@ -65,19 +68,11 @@ suite "nunroll":
       check(list.tail.items[list.tail.items.len - 1].id == flattened[flattened.len - 1])
 
   test "empty":
-    let list = newNunroll(userInfo, 4)
+    let list = newNunroll(comparer, 4)
     checkList(list, @[])
 
-  test "stores id, sort and value":
-    let list = newNunroll(userInfo, 4)
-    list.add(newUser(5))
-    for item in list.asc:
-      check(item.id == 5)
-      check(item.sort == 20)
-      check(item.value.id == 5)
-
   test "add":
-    let list = newNunroll(userInfo, 4)
+    let list = newNunroll(comparer, 4)
     list.add(newUser(2))
     checkList(list, @[2])
     list.add(newUser(1))
@@ -86,13 +81,13 @@ suite "nunroll":
     checkList(list, @[1, 2, 3, 6], @[8])
 
   test "clear":
-    let list = newNunroll(userInfo, 4)
+    let list = newNunroll(comparer, 4)
     list.add(newUser(2))
     list.clear()
     checkList(list, @[])
 
   test "add will add duplicates":
-    let list = newNunroll(userInfo, 4)
+    let list = newNunroll(comparer, 4)
     list.add(newUser(2)); list.add(newUser(2)); list.add(newUser(2))
     checkList(list, @[2, 2, 2])
 
@@ -103,17 +98,17 @@ suite "nunroll":
     checkList(list, @[1, 2, 2, 2], @[2, 3, 3, 5])
 
   test "add reverse":
-    let list = newNunroll(userInfo, 4)
+    let list = newNunroll(comparer, 4)
     for i in countdown(9, 0): list.add(newUser(i))
     checkList(list, @[0, 1], @[2, 3, 4, 5], @[6, 7, 8, 9])
 
   test "delete empty":
-    let list = newNunroll(userInfo, 4)
+    let list = newNunroll(comparer, 4)
     check(list.del(newUser(5)) == false)
     checkList(list, @[])
 
   test "delete miss":
-    let list = newNunroll(userInfo, 4)
+    let list = newNunroll(comparer, 4)
     list.add(newUser(4))
     check(list.del(newUser(5)) == false)
     checkList(list, @[4])
@@ -123,13 +118,13 @@ suite "nunroll":
     checkList(list, @[4, 6])
 
   test "delete when 1":
-    let list = newNunroll(userInfo, 4)
+    let list = newNunroll(comparer, 4)
     list.add(newUser(4))
     check(list.del(newUser(4)) == true)
     checkList(list, @[])
 
   test "delete when 2":
-    let list = newNunroll(userInfo, 4)
+    let list = newNunroll(comparer, 4)
     list.add(newUser(4)); list.add(newUser(6))
     check(list.del(newUser(4)) == true)
     checkList(list, @[6])
@@ -138,7 +133,7 @@ suite "nunroll":
     checkList(list, @[])
 
   test "delete from multiple segments":
-    let list = newNunroll(userInfo, 4)
+    let list = newNunroll(comparer, 4)
     for i in 1..10: list.add(newUser(i))
 
     check(list.del(newUser(0)) == false)
@@ -153,7 +148,7 @@ suite "nunroll":
   test "randomized":
     for i in 0..<1_000:
       var master = initTable[int, User]()
-      let list = newNunroll(userInfo, math.random(64) + 32)
+      let list = newNunroll(comparer, math.random(64) + 32)
 
       for j in 0..<math.random(500)+100:
         if j mod 6 == 0:
@@ -168,8 +163,8 @@ suite "nunroll":
 
       check(list.len == master.len)
 
-      var prev = 0
+      var prev = newUser(-10000)
       for item in list.asc:
         check(master.contains(item.id))
-        check(item.sort >= prev)
-        prev = item.sort
+        check(comparer(item, prev) != -1)
+        prev = item

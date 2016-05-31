@@ -6,26 +6,29 @@ An unrolled list lists is an ideal data structure for read-heavy indexing. The u
 
 ## Usage
 ```nim
-# create a Nunroll of type [uint32, int, User]
-# where the uint32 is the id type and int is the sort type
-let getter = proc(u: User): nunroll.Item[int, int, User] {.noSideEffect.} =
-  return (user.id, user.age, user)
+# the compare two values to determine the sort order
+proc comparer(left, right: User): int {.noSideEffect.} =
+  if left.createdAt < right.createdAt: return -1
+  if left.createdAt > right.createdAt: return 1
+  return 0
 
-let list = newNunroll(getter)
+# User must implement `==`, something like:
+proc `==`(left, right: User): bool {.inline.} = left.id == right.id
+
+# create a Nunroll of type User (inferred from the comparer)
+let list = newNunroll(comparer)
 list.add(user1)
 list.add(user2)
 list.add(user3)
 
 # iterate through users
-for item in list.asc:
-  echo item.id, " ", item.sort, " ", item.user
+for user in list.asc:
+  echo  item.user
 
 # iterate in reverse:
-for item in list.reverse:
-  echo item.id, " ", item.sort, " ", item.user
+for user in list.reverse:
+  echo user
 ```
 
 ## Todo
 Thread-safety
-Updates
-Deletes

@@ -10,49 +10,41 @@ type
   Relative = enum
     Before, After, Self
 
-  Item*[I, S, V] = tuple[
-    id: I,
-    sort: S,
-    value: V,
-  ]
+  Segment*[V] = ref object
+    prev*: Segment[V]
+    next*: Segment[V]
+    items*: seq[V]
 
-  Getter*[I, S, V] = proc(v: V): Item[I, S, V] {.noSideEffect.}
-
-  Segment*[I, S, V] = ref object
-    prev*: Segment[I, S, V]
-    next*: Segment[I, S, V]
-    items*: seq[Item[I, S, V]]
-
-  List*[I, S, V] = ref object
+  List*[V] = ref object
     count: int
     density: int
-    head*: Segment[I, S, V]
-    tail*: Segment[I, S, V]
-    getter: Getter[I, S, V]
+    head*: Segment[V]
+    tail*: Segment[V]
+    comparer: proc(left, right: V): int {.nimcall, noSideEffect.}
 
-proc newSegment[I, S, V](density: int): Segment[I, S, V] =
+proc newSegment[V](density: int): Segment[V] =
   new(result)
-  result.items = newSeq[Item[I, S, V]](density)
+  result.items = newSeq[V](density)
   result.items.setLen(0)
 
-proc newSegment[I, S, V](item: Item[I, S, V], density: int): Segment[I, S, V] =
+proc newSegment[V](item: V, density: int): Segment[V] =
   new(result)
-  result.items = newSeq[Item[I, S, V]](density)
+  result.items = newSeq[V](density)
   result.items[0] = item
   result.items.setLen(1)
 
-proc min[I, S, V](segment: Segment[I, S, V]): S {.inline, noSideEffect.} =
-  return segment.items[0].sort
+proc first[V](segment: Segment[V]): V {.inline, noSideEffect.} =
+  return segment.items[0]
 
-proc max[I, S, V](segment: Segment[I, S, V]): S {.inline, noSideEffect.} =
-  return segment.items[segment.items.len - 1].sort
+proc last[V](segment: Segment[V]): V {.inline, noSideEffect.} =
+  return segment.items[segment.items.len - 1]
 
-proc add[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
+proc add[V](segment: Segment[V], item: V, comparer: proc(left, right: V): int {.nimcall, noSideEffect.}) =
   let length = segment.items.len
   var insertIndex = length
   for i in 0..<length:
     let existing = segment.items[i]
-    if existing.sort > item.sort:
+    if comparer(existing, item) == 1:
       insertIndex = i
       break
 
@@ -67,15 +59,15 @@ proc add[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
 
 # The List has reason to tell us to add this item to the end of our items
 # We trust it (it's probably trying to compact the segments a little)
-proc append[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
+proc append[V](segment: Segment[V], item: V) =
   segment.items.add(item)
 
 # The List has reason to tell us to add this item to the front of our items
 # We trust it (it's probably trying to compact the segments a little)
-proc prepend[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
+proc prepend[V](segment: Segment[V], item: V) =
   segment.items.add(item) # grow the list by 1
   for i in countdown(segment.items.len-2, 0):  # shift everything to the right
-    segment.items[i+1] =segment.items[i]
+    segment.items[i+1] = segment.items[i]
   segment.items[0] = item
 
 # An optimized function used when compacting. By the time this is called, our
@@ -84,10 +76,10 @@ proc prepend[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
 # 2 - Add the new item (which might go anywhere in the segment)
 # Since we know both these things have to happen, we can be more efficient than
 # doing an individual pop + add
-proc firstSwap[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
+proc firstSwap[V](segment: Segment[V], item: V, comparer: proc(left, right: V): int {.nimcall, noSideEffect.}) =
   for i in 1..<segment.items.len:
     let existing = segment.items[i]
-    if existing.sort < item.sort:
+    if comparer(existing, item) == -1:
       segment.items[i-1] = existing
     else:
       segment.items[i-1] = item
@@ -95,7 +87,7 @@ proc firstSwap[I, S, V](segment: Segment[I, S, V], item: Item[I, S, V]) =
   segment.items[segment.items.len-1] = item
 
 # delete the element at the specific index
-proc del[I, S, V](segment: Segment[I, S, V], idx: int) =
+proc del[V](segment: Segment[V], idx: int) =
   assert(idx >= 0, "delete negative segment idx")
 
   for i in idx+1..<segment.items.len:
@@ -104,12 +96,12 @@ proc del[I, S, V](segment: Segment[I, S, V], idx: int) =
   segment.items.setLen(segment.items.len - 1)
 
 # return how much freespace a segment has
-proc freeSpace[I, S, V](list: List[I, S, V], segment: Segment[I, S, V]): int {.inline.} =
+proc freeSpace[V](list: List[V], segment: Segment[V]): int {.inline.} =
   if segment.isNil: return 0
   return list.density - segment.items.len
 
 # merge one segment into another:
-proc merge[I, S, V](list: List[I, S, V], smaller: Segment[I, S, V], larger: Segment[I, S, V]) =
+proc merge[V](list: List[V], smaller: Segment[V], larger: Segment[V]) =
   for item in larger.items:
     smaller.items.add(item)
 
@@ -120,7 +112,7 @@ proc merge[I, S, V](list: List[I, S, V], smaller: Segment[I, S, V], larger: Segm
     list.tail = smaller
 
 # removes an empty segment
-proc remove[I, S, V](list: List[I, S, V], segment: Segment[I, S, V]) =
+proc remove[V](list: List[V], segment: Segment[V]) =
   assert(segment.items.len == 0, "removing non-empty segment")
   if not segment.next.isNil:
     segment.next.prev = segment.prev
@@ -139,27 +131,26 @@ proc remove[I, S, V](list: List[I, S, V], segment: Segment[I, S, V]) =
 # Before, After or None. Before and After indicate that a new segment should
 # be created either before or after the provided segment. None means the list
 # is empty and a new segment needs to be added to the head&tail
-proc findSegment[I, S, V](list: List[I, S, V], item: Item[I, S, V]): tuple[segment: Segment[I, S, V], rel: Relative] {.noSideEffect.} =
-  let sort = item.sort
+proc findSegment[V](list: List[V], item: V): tuple[segment: Segment[V], rel: Relative] {.noSideEffect.} =
   let head = list.head
   let tail = list.tail
 
   # short circuit for new biggest sort (insert ascending)
-  if sort > tail.max:
+  if list.comparer(item, tail.last) == 1:
     if list.freeSpace(tail) > 0: return (tail, Self)
     return (tail, After)
 
   # short circuit for new smallest sort (insert descending)
-  if sort < head.min:
+  if list.comparer(item, head.first) == -1:
     if list.freeSpace(head) > 0: return (head, Self)
     return (head, Before)
 
-  if sort < head.max:
+  if list.comparer(item, head.last) == -1:
     return (head, Self)
 
   var segment = tail
   while not segment.isNil:
-    if sort >= segment.min:
+    if list.comparer(item, segment.first) != -1:
       return (segment, Self)
     segment = segment.prev
 
@@ -169,14 +160,11 @@ proc findSegment[I, S, V](list: List[I, S, V], item: Item[I, S, V]): tuple[segme
 # to find the initial segment to start searching. It should only be called when findSegment
 # return rel == Self. In all other cases, the specific item is not in the list and this
 # procedure should not be called.
-proc index[I, S, V](list: List[I, S, V], start: Segment[I, S, V], item: Item[I, S, V]): tuple[segment: Segment[I, S, V], idx: int] =
-  let id = item.id
-  let sort = item.sort
-
+proc index[V](list: List[V], start: Segment[V], item: V): tuple[segment: Segment[V], idx: int] =
   var segment = start
-  while not segment.isNil and sort <= segment.max:
+  while not segment.isNil and list.comparer(item, segment.last) != 1:
     for i in 0..<segment.items.len:
-      if segment.items[i].id == id: return (segment, i)
+      if segment.items[i] == item: return (segment, i)
     segment = segment.prev
 
   return (nil, -1)
@@ -185,8 +173,8 @@ proc index[I, S, V](list: List[I, S, V], start: Segment[I, S, V], item: Item[I, 
 # out which of the two new segments should get the value
 #
 # Reuse the segment to keep the "bottom" part of the list.
-proc split[I, S, V](list: List[I, S, V], segment: Segment[I, S, V], item: Item[I, S, V]) =
-  let top = newSegment[I, S, V](list.density)
+proc split[V](list: List[V], segment: Segment[V], item: V) =
+  let top = newSegment[V](list.density)
   let cutoff = int(segment.items.len / 2)
 
   # copy the top part of the segment to the new segment
@@ -196,10 +184,10 @@ proc split[I, S, V](list: List[I, S, V], segment: Segment[I, S, V], item: Item[I
   # resize the bottom part
   segment.items.setLen(cutoff)
 
-  if top.min < item.sort:
-    top.add(item)
+  if list.comparer(top.first, item) == -1:
+    top.add(item, list.comparer)
   else:
-    segment.add(item)
+    segment.add(item, list.comparer)
 
   top.next = segment.next
   top.prev = segment
@@ -210,13 +198,15 @@ proc split[I, S, V](list: List[I, S, V], segment: Segment[I, S, V], item: Item[I
   else:
     top.next.prev = top
 
-proc newNunroll*[I, S, V](getter: Getter[I, S, V], density: int = 64): List[I, S, V] =
-  result = List[I, S, V](
-    getter: getter,
-    density: density
+proc newNunroll*[V](comparer: proc(left, right: V): int {.nimcall, noSideEffect.}, density: int = 64): List[V] =
+  result = List[V](
+    density: density,
+    comparer: comparer,
   )
 
-proc del[I, S, V](list: List[I, S, V], item: Item[I, S, V]): bool {.discardable.} =
+proc del*[V](list: List[V], item: V): bool {.discardable.} =
+  if list.head.isNil: return false
+
   let found = list.findSegment(item)
   if found.rel != Self: return false
 
@@ -238,53 +228,51 @@ proc del[I, S, V](list: List[I, S, V], item: Item[I, S, V]): bool {.discardable.
 
   return true
 
-proc clear*[I, S, V](list: List[I, S, V]) {.inline.} =
+proc clear*[V](list: List[V]) {.inline.} =
   list.head = nil
   list.tail = nil
   list.count = 0
 
-proc add*[I, S, V](list: List[I, S, V], newValue: V) {.inline.} =
+proc add*[V](list: List[V], newValue: V) {.inline.} =
   list.update(newValue, nil)
 
 # Adds or updates the value. If oldValue is nil, it is assumed that newValue represents
 # a distinctly new item. If oldValue is not nil, additional checks are made to
 # ensure no duplicate is set.
-proc update*[I, S, V](list: List[I, S, V], newValue: V, oldValue: V) =
+proc update*[V](list: List[V], newValue: V, oldValue: V) =
   let density = list.density
-  let item = list.getter(newValue)
 
   # optimized for when the value has changed, but not its sort
   if not oldValue.isNil:
-    let oldItem = list.getter(oldValue)
-    assert(oldItem.id == item.id, "update oldValue should have same id as newValue")
+    assert(oldValue == newValue, "update oldValue should have same id as newValue")
 
-    if oldItem.sort == item.sort:
-      let found = list.findSegment(item)
-      let oldIndex = list.index(found.segment, oldItem)
+    if list.comparer(oldValue, newValue) == 0:
+      let found = list.findSegment(newValue)
+      let oldIndex = list.index(found.segment, oldValue)
       if not oldIndex.segment.isNil:
         # sort hasn't changed, can just overwrite existing one
-        oldIndex.segment.items[oldIndex.idx] = item
+        oldIndex.segment.items[oldIndex.idx] = newValue
         return
     else:
-      list.del(oldItem)
+      list.del(oldValue)
 
   if list.head.isNil:
-    let segment = newSegment(item, density)
+    let segment = newSegment(newValue, density)
     list.head = segment
     list.tail = segment
     list.count = 1
     return
 
-  let found = list.findSegment(item)
+  let found = list.findSegment(newValue)
   let target = found.segment
 
   list.count += 1
   # Value belongs in a specific segment
   if found.rel == Self:
     if list.freeSpace(target) > 0:
-      target.add(item)
+      target.add(newValue, list.comparer)
     else:
-      list.split(target, item)
+      list.split(target, newValue)
     return
 
   # We *think* we need to create a new segment relative to X.
@@ -297,7 +285,7 @@ proc update*[I, S, V](list: List[I, S, V], newValue: V, oldValue: V) =
   if not target.prev.isNil and list.freeSpace(target.prev) > 0:
     let first = target.items[0]
     target.prev.append(first)
-    target.firstSwap(item)
+    target.firstSwap(newValue, list.comparer)
     return
 
   # Does our next have space? If so, move the target's max value there.
@@ -308,10 +296,10 @@ proc update*[I, S, V](list: List[I, S, V], newValue: V, oldValue: V) =
     let last = target.items[target.items.len - 1]
     target.next.prepend(last)
     target.items.setLen(target.items.len - 1)
-    target.add(item)
+    target.add(newValue, list.comparer)
     return
 
-  let segment = newSegment(item, list.density)
+  let segment = newSegment(newValue, list.density)
   if found.rel == Before:
     segment.next = target
     segment.prev = target.prev
@@ -332,19 +320,15 @@ proc update*[I, S, V](list: List[I, S, V], newValue: V, oldValue: V) =
     else:
       segment.next.prev = segment
 
-proc del*[I, S, V](list: List[I, S, V], value: V): bool {.discardable.} =
-  if list.head.isNil: return false
-  list.del(list.getter(value))
+proc len*[V](list: List[V]): int {.inline, noSideEffect.} = list.count
 
-proc len*[I, S, V](list: List[I, S, V]): int {.inline, noSideEffect.} = list.count
-
-iterator asc*[I, S, V](list: List[I, S, V]): Item[I, S, V] {.inline, noSideEffect.} =
+iterator asc*[V](list: List[V]): V {.inline, noSideEffect.} =
   var segment = list.head
   while not segment.isNil:
     for i in countup(0, <segment.items.len): yield segment.items[i]
     segment = segment.next
 
-iterator desc*[I, S, V](list: List[I, S, V]): Item[I, S, V] {.noSideEffect.} =
+iterator desc*[V](list: List[V]): V {.noSideEffect.} =
   var segment = list.tail
   while not segment.isNil:
     for i in countdown(<segment.items.len, 0): yield segment.items[i]
