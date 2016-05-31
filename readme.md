@@ -6,8 +6,8 @@ An unrolled list lists is an ideal data structure for read-heavy indexing. The u
 
 ## Usage
 ```nim
-# create a Nunroll of type [int, User]
-# where the int is the sort type
+# create a Nunroll of type [uint32, int, User]
+# where the uint32 is the id type and int is the sort type
 let getter = proc(u: User): nunroll.Item[int, int, User] {.noSideEffect.} =
   return (user.id, user.age, user)
 
