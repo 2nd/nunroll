@@ -85,6 +85,12 @@ suite "nunroll":
     list.add(newUser(6)); list.add(newUser(3)); list.add(newUser(8));
     checkList(list, @[1, 2, 3, 6], @[8])
 
+  test "clear":
+    let list = newNunroll(userInfo, 4)
+    list.add(newUser(2))
+    list.clear()
+    checkList(list, @[])
+
   test "add will add duplicates":
     let list = newNunroll(userInfo, 4)
     list.add(newUser(2)); list.add(newUser(2)); list.add(newUser(2))

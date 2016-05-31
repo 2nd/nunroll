@@ -238,6 +238,11 @@ proc del[I, S, V](list: List[I, S, V], item: Item[I, S, V]): bool {.discardable.
 
   return true
 
+proc clear*[I, S, V](list: List[I, S, V]) {.inline.} =
+  list.head = nil
+  list.tail = nil
+  list.count = 0
+
 proc add*[I, S, V](list: List[I, S, V], newValue: V) {.inline.} =
   list.update(newValue, nil)
 
