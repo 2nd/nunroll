@@ -233,9 +233,6 @@ proc clear*[V](list: List[V]) {.inline.} =
   list.tail = nil
   list.count = 0
 
-proc add*[V](list: List[V], newValue: V) {.inline.} =
-  list.update(newValue, nil)
-
 # Adds or updates the value. If oldValue is nil, it is assumed that newValue represents
 # a distinctly new item. If oldValue is not nil, additional checks are made to
 # ensure no duplicate is set.
@@ -319,6 +316,9 @@ proc update*[V](list: List[V], newValue: V, oldValue: V) =
       list.tail = segment
     else:
       segment.next.prev = segment
+
+proc add*[V](list: List[V], newValue: V) {.inline.} =
+  list.update(newValue, nil)
 
 proc len*[V](list: List[V]): int {.inline, noSideEffect.} = list.count
 
