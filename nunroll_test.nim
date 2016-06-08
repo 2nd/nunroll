@@ -1,4 +1,4 @@
-import unittest, nunroll, math, times, tables, sequtils
+import unittest, nunroll, random, times, tables, sequtils
 
 # fake object
 type User = ref object
@@ -31,7 +31,7 @@ proc debug[V](list: List[V]) =
 suite "nunroll":
   let seed = int(times.cpuTime() * 10000000)
   echo "random seed ", seed
-  math.randomize(seed)
+  random.randomize(seed)
 
   # checks both the exposed iterator values (items and pair)
   # as well as the internal segment structure to make sure
@@ -148,16 +148,16 @@ suite "nunroll":
   test "randomized":
     for i in 0..<1_000:
       var master = initTable[int, User]()
-      let list = newNunroll(comparer, math.random(64) + 32)
+      let list = newNunroll(comparer, random.random(64) + 32)
 
-      for j in 0..<math.random(500)+100:
+      for j in 0..<random.random(500)+100:
         if j mod 6 == 0:
           for id, user in master:
             check(list.del(user) == true)
             master.del(id)
             break
           continue
-        let user = newUser(math.random(10_000), math.random(10_000))
+        let user = newUser(random.random(10_000), random.random(10_000))
         list.update(user, master.getOrDefault(user.id))
         master[user.id] = user
 
